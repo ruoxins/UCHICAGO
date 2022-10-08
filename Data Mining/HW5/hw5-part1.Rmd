@@ -1,0 +1,167 @@
+---
+title: "MSCA 31008 HW5"
+author: "Ruoxin Shi"
+date: "2022/3/5"
+output: html_document
+---
+
+## Cluster-wise Regression - GermanCredit
+
+### Load Data
+
+Load data from the library.
+
+```{r GermanCredit}
+# load data
+library(caret)
+data(GermanCredit)
+```
+
+Use only the numeric independent variables 1, and 3 through 7 as predictors.
+
+```{r data, echo=TRUE}
+set.seed(1123)
+# drop unnecessary variables
+# selected only numerical variables as predictors
+
+# Standardize your variables
+scaled_data <- scale(GermanCredit[,c(1:7)])
+
+# Use the 6 numeric variables other than "amount" as independent variables.
+cleaned_df <- scaled_data[,c(1, 3:7)]
+Amount <- scaled_data[,2]
+
+# final data
+final_data <- as.data.frame(cbind(Amount, cleaned_df))
+
+# split
+train_ind <- sample(seq_len(nrow(final_data)), size = 632)
+train <- final_data[train_ind, ]
+test <- final_data[-train_ind, ]
+```
+
+### Import Function
+
+```{r}
+# import the function
+source("clustreg.txt")
+source("clustreg.predict.txt")
+
+```
+
+### Create Model
+
+Perform cluster-wise regression for 1, 2, and 3 clusters. 
+
+```{r model}
+clustreg_credit_1 <- clustreg(train,1,1,1123,1)
+clustreg_credit_2 <- clustreg(train,2,2,1123,10)
+clustreg_credit_3 <- clustreg(train,3,2,1123,10)
+training_r2 <- c(clustreg_credit_1$rsq.best,clustreg_credit_2$rsq.best,clustreg_credit_3$rsq.best)
+```
+
+
+### Holdout Validation
+
+Using the 3 models built with 1, 2, and 3 clusters respectively, predict classes for the holdout set.
+
+```{r predict}
+pred1 <- clustreg.predict(clustreg_credit_1, test)
+pred2 <- clustreg.predict(clustreg_credit_2, test)
+pred3 <- clustreg.predict(clustreg_credit_3, test)
+holdout_r2 <- c(pred1$rsq, pred2$rsq, pred3$rsq)
+
+```
+
+Show a table of training R^2, holdout R^2, and percentage decrease from train to holdout R squared: (Train R square – Holdout R square)/ Train R square.
+
+```{r}
+pct_decrease <- (training_r2 - holdout_r2)/training_r2
+result <- data.frame(training_r2, holdout_r2, pct_decrease)
+result
+```
+
+
+Plot the R^2 for different number of clusters.
+
+```{r plot}
+plot(c(1,2,3), training_r2,
+     ylim=c(0,1),type="l",col=4,main="VAF Plot for GermanCredit Data: Cluster-wise Regression",
+     ylab="Variance Accounted For",xlab="Number of Clusters")
+lines(c(1,2,3), holdout_r2, col="green")
+legend("topleft", pch="-", col=c(4, "green"), c("train", "holdout"), cex=1)
+
+```
+
+
+**Which model is the most stable? Which performs the best on the holdout set. Which one would you choose as the final model?**
+
+According to the percent decrease from train to holdout R^2, the most stable model is the one with 3 cluster. Also, this is the one that performs best on the holdout set. So I would choose this as the final model.
+
+
+### Clustering Result
+
+```{r}
+cluster2 <- clustreg_credit_2$cluster
+cluster3 <- clustreg_credit_3$cluster
+table(cluster2, cluster3)
+```
+```{r}
+prop.table(table(cluster2, cluster3))
+```
+From the above result, we could see that there are some overlap in the first cluster 
+but little overlap in the second cluster. But we could not simply say that the second and third clusters in the 
+3-cluster model are splitted by the second cluster in the 2-cluster model. They are still different clusters.
+
+
+
+
+```{r result1}
+clustreg_credit_2$results
+
+```
+
+
+```{r result2}
+clustreg_credit_3$results
+
+```
+
+
+### Summarize the result
+
+
+**From the training plot of R squared, which solution seems best?**\
+Based on the plot, the solution with 3 clusters works best with the highest VAF value.\
+
+
+**How did each solution perform in holdout?**\
+Similarly, in holdout data, the solution with 3 clusters performs better.\
+
+**Are you able to interpret the results by reading the regression coefficients?**\
+**Can you tell what types of clusters have been formed?**\
+\
+2 cluster result for training set:\
+
+1. In the first cluster, the amount starts from a low value. The most important variable here are *"Duration"* and *"InstallmentRatePercentage"*, with the prior having positive effect and the later having postive effect on *"Amount"*. *"Age"* is also important, with a slightly positive effect on *"Amount"*.\
+
+2. In the second cluster, the amount starts from a much higher value. The most important variable here is still *"Duration"*, which has a much greater positive effect on *"Amount"* than the previous cluster. *"InstallmentRatePercentage"* is also important, with a higher level of negative effect on *"Amount"* as well. *"Age"* is also important here, with a slightly higher positive effect on *"Amount"*. The difference between this cluster and the previous one is that in this cluster, *"NumberExistingCredits"* plays a role as well, with a negative effect.\
+
+
+3 cluster result for training set:\
+
+1. In the first cluster, the amount starts from a very low value. Similar to the 2-cluster result, the most important variables are *"Duration"* and *"InstallmentRatePercentage"*, with the prior having positive effect and the later having postive effect on *"Amount"*. *"ResidenceDuration"* is also important, with a slightly positive effect on *"Amount"*. The rest variables are less important in this cluster.\
+
+2. In the second cluster, the amount starts from a low value, but higher than the previou cluster. The most important variable is *'Duration'*, which has a positive effect on the *'Amount'*. All other variables plays some roles in this cluster. However, the effect of *"InstallmentRatePercentage"* decreases a lot and becomes the least important one among all others.\
+
+3. In the third cluster, the amount starts from a much higher value. The most important variable is still *'Duration'*, which has a positive effect on the *'Amount'*. *"InstallmentRatePercentage"* and *"ResidenceDuration"* also plays important roles. *"Age"* and *"NumberExistingCredits"* are less important but still have a slighter degree of impact. \
+
+
+
+So from the above interpretation we could know that in different clusters, same variable might have various influence on the target variable. But among all variables, *'Duration'* always plays a significant role.
+The amount increases as duration increases in both the 2-cluster and 3-cluster result. This means that the general influence of *"Duration"* is similar for different type of clusters. The difference is in the level of impact.\
+
+
+Also, in the 2-cluster result, we could hardly see the influence of *"ResidenceDuration"*, *"NumberExistingCredits"* and *"NumberPeopleMaintenance"*. But in the 3-cluster result, it shows clearly that *"ResidenceDuration"* has a positive effect on *"Amount"* in the first and third cluster, and a negative effect in the second cluster; both *"NumberExistingCredits"* and *"NumberPeopleMaintenance"* are more important in the second cluster with both positive effect, and not very important in the first and third cluster. This situation might also indicated that 3-cluster model is better since it clarifies the impact of variables in a clearer and more comprehensive way.\
+\
+
