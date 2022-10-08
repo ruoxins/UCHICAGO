@@ -1,0 +1,86 @@
+Neo4j:
+1. Find all Producers that produced the movie When Harry Met Sally
+MATCH (harrySally {title: "When Harry Met Sally"})<-[:PRODUCED]-(producers) 
+RETURN producers.name
+
+
+2. Find directors who have directed more than 2 movies
+MATCH (p:Person) 
+WHERE size((p)-[:DIRECTED]->()) > 2
+MATCH (p)-[:DIRECTED]->(movie:Movie)
+RETURN p.name, count(p)
+
+
+3. Find the actors with 5+ movies, and the movies in which they acted
+MATCH (actor:Person) 
+WHERE size((actor)-[:ACTED_IN]->() ) > 5
+MATCH (actor)-[:ACTED_IN]->(movie:Movie)
+RETURN actor.name, collect(movie.title) as movies, count(*) as total
+
+
+4. Movies and actors exactly 3 "hops" away from the movie Hoffa
+MATCH (m:Movie {title:"Hoffa"})-[*3]-(p)
+RETURN DISTINCT p as movie_actor
+
+
+5. Find all actors who have also directed movies and the movies that they
+directed
+MATCH (actor:Person) 
+WHERE size((actor)-[:ACTED_IN]->() ) > 0 and size((actor)-[:DIRECTED]->() ) > 0
+MATCH (actor)-[:DIRECTED]->(movie:Movie)
+RETURN actor.name, collect(movie.title) as movies
+
+
+6. Provide 5 additional queries and indicate the specific business use cases they
+address
+
+(a) Find the number of actors/directors/producers/writers
+Insight: Check the number of people in each role to understand the population distribution in the film industry
+
+MATCH (p1:Person)-[:ACTED_IN]->(m1:Movie)
+MATCH (p2:Person)-[:DIRECTED]->(m2:Movie)
+MATCH (p3:Person)-[:PRODUCED]->(m3:Movie)
+MATCH (p4:Person)-[:WROTE]->(m4:Movie)
+RETURN COUNT(DISTINCT p1) as Actors, COUNT(DISTINCT p2) as Directors,
+        COUNT(DISTINCT p3) as Producers, COUNT(DISTINCT p4) as Writers
+
+(b) Get the reviewers name and their ratings for movies
+Insight: 
+By getting the ratings for the movies, we could know the popularity of the movie and also understand the movie
+performance in a more comprehensive way.
+
+MATCH (p)-[r:REVIEWED]->(m)
+RETURN p.name as name, m.title as movie, r.rating as rating, r.summary as summary
+ORDER BY r.rating DESC
+
+
+(c) List the movie count in each year following time order.
+Insight: 
+Comparing the number of movies in each year to see the overall performance of the movie market that year.
+
+MATCH (m:Movie)
+RETURN m.released AS year, COUNT(*) AS total
+ORDER BY year
+
+(d) List the actors who acted multiple roles in a single movie with their roles and the movie title.
+Insight: 
+We could find the corresponding review for the actors and movies on this list to see whether 
+actors playing multiple roles in a movie would affect the movie's popularity/quality.
+
+MATCH (p:Person)-[r:ACTED_IN]->(m:Movie)
+WHERE size(r.roles) > 1
+RETURN p.name AS Name, r.roles AS Roles, m.title AS Title
+ORDER BY p.name
+
+(e) Find the top 10 coactors and the number of movies they act in together (order by the count of coacting movies)
+Insight:
+Find the actors who often cooperate and check whether this collaboration would be a factor the influence the popularity
+of a movie (combine the rating, review of the movies they coacted in).
+
+
+MATCH (p1:Person) -[:ACTED_IN*2]- (p2:Person)
+WHERE p1.name <> p2.name
+RETURN p1.name AS actor1, p2.name AS actor2, count(*) as movie_count
+order by movie_count desc, actor1, actor2
+LIMIT 10
+
