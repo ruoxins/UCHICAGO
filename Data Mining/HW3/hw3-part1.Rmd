@@ -1,0 +1,195 @@
+---
+title: "MSCA 31008 HW3-Part1"
+author: "Ruoxin Shi"
+date: "2022/2/2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Latent Class Analysis
+
+### Load Data
+
+```{r GermanCredit, echo=TRUE}
+# load data
+GermanCredit <- read.table("http://archive.ics.uci.edu/ml/machine-learning-databases/statlog/german/german.data", stringsAsFactors = TRUE)
+
+colnames(GermanCredit) <- c("CheckingAccountStatus", "Duration", "CreditHistory", "Purpose", "Amount",  "SavingsAccountBonds", "EmploymentDuration", "InstallmentRatePercentage",  "Personal",  "OtherDebtorsGuarantors", "ResidenceDuration", "Property",  "Age",  "OtherInstallmentPlans", "Housing", "NumberExistingCredits", "Job", "NumberPeopleMaintenance", "Telephone", "ForeignWorker", "Class")
+```
+
+
+```{r variable_selection, echo=TRUE}
+# Select only categorical vairable for segmentation use
+# Delete unrelated variables
+non_categorical_vars <- c('Duration', 'CreditHistory', 'Amount', 'EmploymentDuration', 
+                          'InstallmentRatePercentage', 'OtherDebtorsGuarantors', 
+                          'ResidenceDuration', 'Age', 'OtherInstallmentPlans', 
+                          'NumberExistingCredits', 'NumberPeopleMaintenance', 
+                          'Telephone', 'ForeignWorker', 'Class')
+data <- GermanCredit[,!(names(GermanCredit) %in% non_categorical_vars)]
+data[is.na(data)] <- "NA"
+```
+
+### Attribute Information:
+
+**CheckingAccountStatus**\
+A11 : ... < 0 DM\
+A12 : 0 <= ... < 200 DM\
+A13 : ... >= 200 DM / salary assignments for at least 1 year\
+A14 : no checking account\
+
+**Purpose**\
+A40 : car (new)\
+A41 : car (used)\
+A42 : furniture/equipment\
+A43 : radio/television\
+A44 : domestic appliances\
+A45 : repairs\
+A46 : education\
+A47 : (vacation - does not exist?)\
+A48 : retraining\
+A49 : business\
+A410 : others\
+
+**Savings account/bonds**\
+A61 : ... < 100 DM\
+A62 : 100 <= ... < 500 DM\
+A63 : 500 <= ... < 1000 DM\
+A64 : .. >= 1000 DM\
+A65 : unknown/ no savings account\
+
+**Personal**\
+A91 : male : divorced/separated\
+A92 : female : divorced/separated/married\
+A93 : male : single\
+A94 : male : married/widowed\
+A95 : female : single\
+
+**Property**\
+A121 : real estate\
+A122 : if not A121 : building society savings agreement/ life insurance\
+A123 : if not A121/A122 : car or other, not in attribute 6\
+A124 : unknown / no property\
+
+**Job**\
+A171 : unemployed/ unskilled - non-resident\
+A172 : unskilled - resident\
+A173 : skilled employee / official\
+A174 : management/ self-employed/\
+highly qualified employee/ officer\
+
+
+### Split Data into Train and Test Set
+
+```{r split, echo=TRUE}
+# make result reproducible
+set.seed(1123)
+
+sample_size <- round(0.7 * nrow(data))
+
+train_ind <- sample(seq_len(nrow(data)), size = sample_size)
+train <- data[train_ind, ]
+test <- data[-train_ind, ]
+```
+
+### Try Different k values. (Save AIC and BIC)
+```{r LCA}
+library(poLCA)
+f <- cbind(CheckingAccountStatus, Purpose, 
+                     SavingsAccountBonds,Personal,
+                     Property, Job) ~ 1
+AIC <- data.frame()
+BIC <- data.frame()
+
+for (i in 2:6) {
+  lca <- poLCA(f, train, nclass = i, tol=0.001, nrep=10, verbose = FALSE)
+  AIC <- rbind(AIC, cbind(i, lca$aic))
+  BIC <- rbind(BIC, cbind(i, lca$bic))
+}
+```
+
+
+```{r combine result}
+names(AIC) <- c("num_of_classes", "aic")
+names(BIC) <- c("num_of_classes", "bic")
+result <- data.frame(cbind(AIC, BIC$bic))
+names(result) <- c("num_of_classes", "aic", "bic")
+```
+
+### Plot the Scree Plot of AIC/BIC for Different k
+```{r plot, echo=TRUE}
+# Create a first line
+plot(result$num_of_classes, result$aic, type = "b", frame = FALSE, pch = 19, 
+     col = "red", ylim =range(min(result$aic, result$bic), max(result$aic, result$bic)), 
+     xlab = "num of classes", ylab = "value")
+# Add a second line
+lines(result$num_of_classes, result$bic, pch = 18, col = "blue", type = "b", lty = 2)
+# Add a legend to the plot
+legend("topleft", legend=c("AIC", "BIC"), col=c("red", "blue"), lty = 1:2, cex=0.8)
+```
+
+**We want to get a model with AIC, BIC values as small as possible. From the above plot we know that AIC is smallest when number of classes is 6 while BIC is smallest when number of classes is 2. It is hard to decide since AIC rises as number of classes increases while BIC drops. So we need to get a compromised solution here with number of classes = 4.**
+
+```{r LCA_final}
+lca_4class <- poLCA(f, train, nclass = 4, tol=0.001, nrep=10, verbose = FALSE, graphs = TRUE)
+train_probs <- lca_4class$probs
+```
+
+
+### Perfrom Test Validation of LCA
+
+
+```{r LCA_test}
+lca_4class_test <- poLCA(f, test, nclass = 4, tol=0.001, nrep=10, verbose = FALSE, 
+                         graphs = TRUE, probs.start = train_probs)
+```
+
+**The overall classes population share proportion is not very similar for the train and test sample. Also, the specific marginal distrition is different for most attributes. So I won't say this is a very stable model.**
+
+
+### Analyze and Name the Classes
+
+*Look at the marginal distribution from the plot. Try to give a name to each of the classes.*
+I follow the distribution in the train result.
+\
+Naming:\
+Class 1: Single Male that have low saving and checking amount, have some properties, plan to use credit for durable commodities and retraining.\
+1. Most of them are single male with smaller proportion of married female.\
+2. Most of them are skilled employees or highly qualified self-employed.\
+3. Most of them have no savings or low amount in account.\
+4. Most of them have no or low amount in checking account.\
+5. Most of them have only cars or some other properties or no property.\
+6. Most of their purposes are for car, with a small proportion in domestic appliance, furnitures, retraining and other purposes.\
+\
+Class 2: Single Male with moderate saving and high checking ammount and have some property, plan to use credit for durable commodities.\
+1. Most of them are single male that are skilled employees or highly qualified self-employed.\
+2. Most of them have considerable checking ammount.\
+3. Some of them have moderate savings.\
+4. Most of them have insurance or car as properties.\
+5. Most of their purposes are for car, radio, television and domestic appliances.\
+\
+Class 3:Single Male / Family that have little saving and checking account amount and some property, plan to use credit for durable commodities.\
+1. Most of them are single male or married female.\
+2. Most of them are skilled workers with smaller proportion of unemployed resident.\
+2. Most of them have no or little savings.\
+3. Most of them have no or little amount in checking account; a small proportion have higher amount.\
+4. Most of them have real estate, car, insurance or other properties.\
+5. Most of their purposes are for radio and television, with smaller proportion in car and domestic appliances.\
+\
+Class 4: Single Male / Family with no or little saving and moderate checking amount, have some properties and plan to use credit for durable commodities.\
+1. Most of them are single male or married male/female that are skilled employees with smaller proportion of unemployed resident.\
+2. Most of them have no or little saving.\
+3. Most of them have moderate or high checking ammount.\
+3. Most of them have real estate, with smaller proportion having car or some other properties and insurance.\
+4. Most of their purposes are for car, domestic appliance and other purposes.\
+\
+
+
+*Was naming the classes easy? What was the difficulty? State in a few sentences*
+\
+**Naming is not very easy since some of the attributes are overlapped across different classes and the classes boundary are not very clear. But overall we could still summarize some unique characteristics of each class.**
+
+

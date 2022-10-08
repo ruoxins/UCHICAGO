@@ -1,0 +1,204 @@
+---
+title: "MSCA 31008 HW3-Part2"
+author: "Ruoxin Shi"
+date: "2022/2/3"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Principle Component
+
+
+### Import, Standardized and Split data
+
+**Data description:**
+\
+CRIM - per capita crime rate by town \
+ZN - proportion of residential land zoned for lots over 25,000 sq.ft. \
+INDUS - proportion of non-retail business acres per town. \
+CHAS - Charles River dummy variable (1 if tract bounds river; 0 otherwise) \
+NOX - nitric oxides concentration (parts per 10 million) \
+RM - average number of rooms per dwelling \ 
+AGE - proportion of owner-occupied units built prior to 1940 \
+DIS - weighted distances to five Boston employment centres \
+RAD - index of accessibility to radial highways \
+TAX - full-value property-tax rate per $10,000 \
+PTRATIO - pupil-teacher ratio by town \
+B - 1000(Bk - 0.63)^2 where Bk is the proportion of blacks by town \
+LSTAT - % lower status of the population \
+MEDV - Median value of owner-occupied homes in $1000's \
+
+```{r data}
+data("Boston")
+
+# keep only numeric data
+# chas is a categorical
+df <- subset(Boston, select = -c(chas))
+
+# standardize and split the data
+#df <- scale(df)
+
+set.seed(1123)
+sample_size <- round(0.7 * nrow(df))
+train_ind <- sample(seq_len(nrow(df)), size = sample_size, replace=FALSE)
+train <- df[train_ind, ]
+test <- df[-train_ind, ]
+
+train_mean <- colMeans(train)
+train_std <- apply(train, 2, sd)
+train <- scale(train, center = train_mean, scale = train_std)
+test <- scale(test, center = train_mean, scale = train_std)
+```
+
+### Perform PCA and check result
+
+```{r pca}
+m1 <- prcomp(train)
+VAF <- cumsum(m1$sdev^2/sum(m1$sdev^2))
+```
+
+#### Plot VAF Scree Plot
+```{r plot}
+x <- 1:13
+plot(x, VAF, type = "b", pch = 19, col = "red", xlab = "k", ylab = "VAF")
+```
+```{r}
+layout(matrix(1:2, ncol=2))
+screeplot(m1)
+screeplot(m1, type="lines")
+```
+
+
+```{r summary}
+summary(m1)
+```
+
+From the summary and scree plot above we know that first 7 priciple components have a cumulative proportion of 91.259%, which is good enough. So I would choose the first 7 principle components.
+
+```{r figs, fig.height=10, fig.width=15}
+#par(mfrow=c(6, 1))
+for (i in 2:7) {
+  biplot(m1$x[,c(1,i)],m1$rotation[,c(1,i)], cex=1,col=c(4,6))
+}
+
+```
+
+### Interpret the component:
+
+*Can you interpret each of the components you decide to retain. In case a component is not interpretable, note that.*
+\
+**We could get information from the direction of each vector as well as the angle size between each of them.**\
+\
+From the first plot above we could know that 'rm' and 'medv' have stronger influence on PC2 while 'nox', 'indus' relatively contribute more to PC1. Also, since 'ptratio' and 'nox' are almost perpendicular to each other, they have little correlation. The angle between 'crim' and 'age' is smaller than 90 degrees, which indicates a postive correlation; the angle between 'dis' and 'rad' is greater than 90 degrees, which indicates a negative correaltion.\
+\
+From the second plot, we could know that 'zn' and 'crim' have more influence on PC3 and they have negative correlation. 'nox' and 'indus' have relatively more influence on PC1 and they have positive correlation. And in this plot, 'age' and 'ptratio' are almost perpendicular so they have little correlation.\
+\
+From the third plot, we could know that 'black' and 'ptratio' have more influence in PC4 and they have positive correlation. Here, 'dis' and 'indus' have more influence on PC1, and they have negative correlation. We also know from the angle size that 'zn' and 'rm' have little correlation.\
+\
+From the fourth plot, we could know that 'zn' and 'black' have more influence on PC5 and they have positive correlation. 'dis' and 'indus' have stronger influnce on PC1 and they have negative correlation. In this plot, 'tax' is almost perpendicular to both the 'ptratio' and 'crim', so it has little or no correlation to both of them.\
+\
+From the fifth plot, we could know that 'black' and 'crim' have more influence on PC6, and they have positive correlation. 'dis' and 'nox' have greater influence on PC1 and they have negative correlation. Here, 'crim' and 'nox' have little correlation.\
+\
+From the last plot, we could know that 'age' and 'rm' have stronger influence on PC7 and they have postive correlation. And 'indus' and 'nox' have greater influence on PC1 and they have postive correlation as well. Here, 'zn' and 'medv' have little correlation.\
+\
+**Summary - contributions of each variables to different PC:**\
+PC1: 'nox', 'dis', 'indus'\
+PC2: 'rm', 'medv'\
+PC3: 'zn', 'crim'\
+PC4: 'black', 'ptratio'\
+PC5: 'zn', 'black'\
+PC6: 'black', 'crim'\
+PC7: 'age', 'rm'\
+**'lstat', 'tax', 'rad' have relatively less contribution to the first 7 principal components.**
+
+
+### Perform the following:
+
+#### Show that Component loadings are orthogonal.
+
+```{r}
+round(t(m1$rotation) %*% m1$rotation,2)
+round(m1$rotation %*% t(m1$rotation),2)
+```
+
+
+#### Show that Component scores are orthogonal.
+
+```{r}
+round(cov(m1$x),2)
+round(t(m1$x) %*% m1$x/353,2)
+```
+
+**From the above result we could see that both the component loadings and component scores are orthogonal since
+the result t(X) %\*% X is a diagonal matrix that has non-zero values on the diagonal and zeroes off the diagonal.**
+
+
+
+
+
+
+#### Perform Test validation of Principal Components solution.
+
+```{r}
+pred <- predict(m1, test)
+```
+
+*matrix multiply the predicted component scores from (1) above with transpose of component loadings you derived from training data set from Step 2 above. *
+
+```{r}
+head(round(pred[,1:7] %*% t(m1$rotation)[1:7,], 2))
+```
+
+#### Compute the Variance Account For (R^2) in the Test sample.
+
+```{r}
+cor(as.vector(train), as.vector(m1$x[,1:7] %*% t(m1$rotation)[1:7,]))^2
+cor(as.vector(test), as.vector(pred[,1:7] %*%  t(m1$rotation)[1:7,]))^2
+```
+
+**I calculated R^2 for both train set and test set. The result for the test sample is not very similar to that of train sample.**
+
+***Note: I try to add 'scale=TRUE' in the prcomp function and I got a R^2 of 0.9160171 for test sample. But I think I have already scaled the sample before, I don't need to scale it again in the function. Also, from the sample code given in class, I don't need to scale again if I scale the data before perform PCA. So here I choose not to add the 'scale=TRUE' option. Although the R^2 is low here, I think this would be reasonable.***
+
+
+
+#### Rotate the component loadings using varimax rotation. 
+
+```{r}
+m2 <- prcomp(train)
+summary(m2)
+```
+
+
+```{r}
+cor(as.vector(scale(train)), as.vector(m2$x[,1:7]  %*% t(m2$rotation)[1:7,]))^2
+
+```
+
+
+```{r}
+y <- varimax(m2$rotation[, 1:7])
+y
+```
+
+```{r}
+cor(as.vector(scale(train)), as.vector(m2$x[,1:7] %*% y$rotmat %*% t(y$rotmat) %*% t(m2$rotation)[1:7,]))^2
+```
+**R^2 is the same.**
+
+#### Plot rotated loadings(1) versus rotated loadings (2) and (3).
+
+```{r, fig.height=10, fig.width=15}
+for (i in 2:7) {
+  biplot(m2$x[,c(1,i)], y$loadings[,c(1,i)], cex=1,col=c(4,6))
+}
+
+
+```
+
+**This rotated loadings result are clearer and we could distinguish the variables that have more influence on each principal component. The variables that have most impact on each principal component is more outstanding than the previous solution. Personally speaking, I like this solution.**
+
+
