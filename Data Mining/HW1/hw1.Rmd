@@ -1,0 +1,237 @@
+---
+title: "MSCA 31008 HW1"
+author: "Ruoxin Shi"
+date: "2022/1/19"
+output:
+  pdf_document: default
+---
+
+<!-- # ```{r setup, include=FALSE} -->
+<!-- # knitr::opts_chunk$set(include = FALSE) -->
+<!-- # ``` -->
+
+## Load Data
+
+Load data from the library. Since the column 'Class' is categorical, in order to get a linear regression model,
+we create dummy variables for 'Class': 'class_good' and 'class_bad'.
+
+```{r GermanCredit, echo=TRUE}
+# load data
+library(caret)
+data(GermanCredit)
+
+# create dummy variables for 'Class'
+GermanCredit$class_good <- ifelse(GermanCredit$Class == 'Good', 1, 0)
+GermanCredit$class_bad <- ifelse(GermanCredit$Class == 'Bad', 1, 0)
+GermanCredit <- subset(GermanCredit, select = -c(Class))
+```
+
+## Create Full Model
+
+First, we use all the variables to create a full model.
+
+```{r full_model, echo=TRUE}
+full_model <- lm(Amount ~ ., data = GermanCredit)
+summary(full_model)
+```
+
+## Feature Selection
+
+According to the above summary, we remove variables with NA as coefficient estimation.
+
+```{r feature, echo=TRUE}
+cleaned_df <- subset(GermanCredit, select = -c(CheckingAccountStatus.none, CreditHistory.Critical, 
+                                    Purpose.Vacation, Purpose.Other, SavingsAccountBonds.Unknown,
+                                    EmploymentDuration.Unemployed, Personal.Male.Married.Widowed, 
+                                    Personal.Female.Single, OtherDebtorsGuarantors.Guarantor, Property.Unknown,
+                                    OtherInstallmentPlans.None, Housing.ForFree, Job.Management.SelfEmp.HighlyQualified,
+                                    class_bad))
+```
+
+## Split Data and Create Repetition Models
+
+```{r model2, echo=TRUE}
+# create single model use cleaned data
+model2 <- lm(Amount ~ ., data = cleaned_df)
+summary(model2)
+```
+```{r coeff, echo=TRUE}
+#create dataframe to store model coefficients
+coeffs <- data.frame(matrix(ncol = 49, nrow = 1000))
+colnames(coeffs) <- names(model2$coefficients)
+
+#create dataframe to store model coefficients
+r_square <- data.frame(matrix(ncol = 3, nrow = 1000))
+colnames(r_square) <- c("R^2 for Train", "R^2 for Test", "Percent Drop")
+```
+
+```{r model, echo=TRUE}
+n <- 1000
+
+for (i in 1:n) {
+  # split
+  train_ind <- sample(seq_len(nrow(cleaned_df)), size = 632)
+  train <- cleaned_df[train_ind, ]
+  test <- cleaned_df[-train_ind, ]
+  
+  test_no_amount <- subset(test, select = -c(Amount))
+  
+  m <- lm(Amount ~ ., data = train)
+  res <- summary(m)
+  r_square[i,1] <- res$r.squared
+  coeffs[i,] <- m$coefficients
+  pred <- predict(m, test_no_amount)
+  cor_coeff <- cor(test$Amount, pred)^2
+  r_square[i,2] <- cor_coeff
+}
+
+```
+
+## Plot Histograms of Coefficients and R^2
+
+```{r plot1, echo=TRUE}
+# Plot histogram of 3 coefficients
+par(mfrow = c(1, 3))
+for (i in 2:4){
+  x <- coeffs[,i]
+  hist(x, xlab=colnames(coeffs)[i])
+}
+```
+```{r hist2}
+# Plot distribution of R squared in train/ hold out
+b <- min(c(r_square[,1], r_square[, 2])) # Set the minimum for the breakpoints
+e <- max(c(r_square[,1], r_square[, 2])) # Set the maximum for the breakpoints
+ax <- seq(round(b,2)-0.02,round(e,2)+0.02, by = 0.01) # Make a neat vector for the breakpoints
+
+c1 <- rgb(173,216,230,max = 255, alpha = 80, names = "lt.blue")
+c2 <- rgb(255,192,203, max = 255, alpha = 80, names = "lt.pink")
+
+hgA <- hist(r_square[,1], breaks = ax, plot = FALSE) # Save first histogram data
+hgB <- hist(r_square[,2], breaks = ax, plot = FALSE) # Save 2nd histogram data
+
+plot(hgA, col = c1, main="Histogram of R^2", xlab = "r^2") # Plot 1st histogram using a transparent color
+plot(hgB, col = c2, add = TRUE) # Add 2nd histogram using different color
+```
+
+
+
+
+
+```{r plot2, echo=TRUE}
+par(mfrow = c(1, 1))
+# Calculate percentage decrease of R square from train to holdout and
+# plot the distribution
+Train.R.Squared <- r_square[, 1]
+Holdout.R.Squared <- r_square[, 2]
+r_square[, 3] <- (Train.R.Squared - Holdout.R.Squared)/Train.R.Squared*100
+hist(r_square[, 3], xlab="drop(%)", main="Histogram for Percentage Drop in R^2")
+```
+
+**Interpret the results of the above plots? How would we hope/expect them to look? Does this indicate a good result? What do these plots say about what we usually expect the R squared to be and how much R squared we usually expect to lose from Train to holdout?**
+\
+From the above plots we could see that the shape of these 2 histogram is close to a normal distribution. This indicate a relatively good result. Also, the mean value of R^2 for trained data is about 0.63 while that of test data is about 0.55. And there is a drop of 10-15% in average in the R^2 and most of the R^2 are dropped from train to test data. Thus, we would expect R^2 to be about 0.63 and there would be a 10-15% loss from train to holdout.
+\
+One explanation for this drop might be that the model has a relatively low generalization. It has too many variables. 
+It might work fine with the train data (since the model is built based on these), but might fail to fit well for the 
+holdout data.
+
+
+
+
+## Calculate Mean, Stdev of Repetition Model & Make Comparison
+
+```{r compute, echo=TRUE}
+# Compute the averages of all 1000 coefficients.
+# Compute the standard deviation of all 1000 coefficients (for each beta)
+coeff_data <- data.frame(matrix(ncol = 49, nrow = 4))
+colnames(coeff_data) <- names(model2$coefficients)
+rownames(coeff_data) <- c("mean", "stdev", "coeff_full", "Percent Diff")
+for (i in 1:49) {
+  coeff_data[1, i] <- mean(coeffs[,i])
+  coeff_data[2, i] <- sd(coeffs[,i])
+}
+
+# Compare average across 1000 to single model built using entire sample.
+coeff_data[3, ] <- na.omit(full_model$coefficients)[1:49]
+
+# Compare the means of the 1000 coefficients to the coefficients from the model 
+# created in step 2 created using the entire sample. 
+# Show the percentage difference
+coeff_data[4,] <- (abs(coeff_data[1, ] - coeff_data[3, ]) / ((coeff_data[1, ] + coeff_data[3,]) / 2)) * 100
+#coeff_data[4,] <- (coeff_data[1, ] - coeff_data[3, ]) / coeff_data[1, ]*100
+
+# Transpose
+coeff_data_transpose <- as.data.frame(t(as.matrix(coeff_data)))
+```
+
+```{r table, layout="l-body-outset", echo=TRUE}
+knitr::kable(coeff_data_transpose)
+```
+
+## Calcualte Confidence Interval
+
+```{r CI, echo=TRUE}
+# Sort each coefficient's 1000 values. Compute 2.5%-97.5% Confidence
+# Intervals (CI). Scale these CI's down by a factor of .632^0.5 . 
+CI <- data.frame(matrix(ncol = 7, nrow = 49))
+rownames(CI) <- names(model2$coefficients)
+colnames(CI) <- c("Rep.lower", "Rep.upper", "Rep scaled width",
+                  "Full.lower", "Full.upper", "Full width", "Width Diff")
+
+for (i in 1:49) {
+  sample.mean <- coeff_data[1,i]
+  sample.se <- coeff_data[2,i]/sqrt(n)
+  
+  alpha <- 0.05
+  degrees.freedom <- n - 1
+  t.score <- qt(p=alpha/2, df=degrees.freedom,lower.tail=F)
+  
+  margin.error <- t.score * sample.se
+  lower.bound <- sample.mean - margin.error
+  upper.bound <- sample.mean + margin.error
+  CI[i,1] <- lower.bound
+  CI[i,2] <- upper.bound
+  CI[i,3] <- (upper.bound - lower.bound)*sqrt(0.632)
+}
+
+# confidence interval of full model
+interval <- confint(full_model, level=0.95)
+interval <- na.omit(interval)
+CI[, 4] <- interval[, 1]
+CI[, 5] <- interval[, 2]
+CI[, 6] <- interval[, 2] - interval[, 1]
+CI[, 7] <- CI[,3] - CI[,6]
+
+# check whether rep model has a tighter CI or not
+CI$tighter <- ifelse(CI$`Width Diff` < 0, 1, 0)
+```
+
+```{r table2, layout="l-body-outset", echo=TRUE}
+knitr::kable(CI)
+```
+
+## Interpret Result
+
+**How did the means compare?**
+\
+For most of the coefficients, the difference in mean is under 5%. This means that the sample mean for coefficients are close to the full model's coefficient value.
+\
+Some of the coefficients have higher difference, but no greater than 13%: 
+
+```{r great diff, echo=TRUE}
+coeff_data_transpose[abs(coeff_data_transpose$`Percent Diff`) >= 5,]
+```
+
+
+
+**How about the confidence intervals, how many were tighter or broader?** 
+\
+Confidence intervals for all the coefficients are tighter for the Repetition model than those of the full model.
+\
+\
+**What does this say about each method? What if we tried doing 10,000 samples?**
+\
+A tighter confidence interval means a smaller margin of error. Thus we could have a more precise estimate
+of the parameters. If we do 10000 samples, we would have even narrower confidence intervals. Larger sample
+size would give us more precise estimates (and hence have narrower confidence intervals) than smaller ones.
+
